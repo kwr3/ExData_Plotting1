@@ -1,0 +1,158 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r Read Data and Clean it}
+
+library(tidyverse)
+library(lubridate)
+
+#here we read and clean data by filling "?" with NA values,
+#converting columns to dates and times, as well as converting
+#character columns to numeric values and then filtering to 
+#the correct date range 
+data <-read.table("household_power_consumption.txt", sep = ";",
+                  header = TRUE) %>% 
+       as_tibble %>% 
+       na_if("?") %>%
+       mutate(across(.cols = -(1:2),
+                     .fns = as.numeric)) %>% 
+       mutate(across(.cols = 1, .fns = dmy)) %>% 
+       mutate(across(.cols = 2, .fns = hms)) %>% 
+       filter(Date >= ymd("2007-02-01") & Date <= ymd("2007-02-02"))
+
+
+#need to create a datetime column with mutate
+data <- data %>% mutate(dt_tm = make_datetime(year(Date),
+                                              month(Date),
+                                              day(Date),
+                                              hour(Time),
+                                              minute(Time),
+                                             second(Time)))
+
+#need to customize and set tickmarks for the plot. We see the plot has
+#thurs, fri, and sat. Which correspond to Feb 1, Feb 2, Feb 3. at time 00:00:00
+#we will make it a vector and pass it to the breaks arg of scale_x_continuous,
+#then call labels to set the day of week
+xticks <- c(make_datetime(2007,2,1,0,0,0),
+            make_datetime(2007,2,2,0,0,0),
+            make_datetime(2007,2,3,0,0,0))
+```
+```{r Make Plot 1}
+
+p1 <- ggplot(data = data)+ 
+        geom_histogram(mapping = aes(x = Global_active_power), fill = "red",
+                       col = "black", bins = 24) +
+        labs(x = "Global Active Power (kilowatts)", y = "frequency",
+             title = "Global Active Power") + 
+        theme_classic() +
+        ylim(c(0,1250))
+
+ggsave("Plot1.png", dpi = 1200)
+```
+```{r Plot 2}
+
+
+p2 <- ggplot(data = data) + 
+        geom_line(mapping = aes(x = dt_tm, y=Global_active_power),
+                  color = "black") +
+        labs(x = "Day of week", y = "Global Active Power",
+             title = "Daily Fluctuations") +
+        scale_x_continuous(breaks = xticks,labels = c("Thurs", "Fri", "Sat")) +
+        theme_bw()
+
+ggsave("plot2.png", dpi = 1200)
+
+```
+
+```{r Plot 3}
+
+
+
+#sub meter is not tidy form. can pivot to get it in tidy form and
+#is much better for ggplot
+piv <- data %>% pivot_longer(cols = 7:9, names_to = "sub_meter_type",
+                              values_to = "key")
+
+
+ p3 <- ggplot(data = piv) +
+          geom_line(mapping = aes(x = dt_tm, y = key,color = sub_meter_type)) +
+          labs(x = "Day of week", y = "Energy sub metering") +
+          scale_x_continuous(breaks = xticks, labels = c("Thurs", "Fri", "Sat"))
+
+ggsave("plot3.png", dpi = 1200)
+
+```
+
+```{r Plot 4 multiplot}
+
+p4 <- ggplot(data = data) + geom_line(mapping = aes(x = dt_tm, y = Voltage)) +
+                            scale_x_continuous(breaks = xticks, labels = 
+                                                    c("Thurs", "Fri", "Sat")) +
+                            labs(x = "Day of week")
+
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+multiplot(p1,p2,p3,p4, cols = 2)
+ggsave(plot = multiplot(p1,p2,p3,p4, cols = 2),"plot4.png", dpi = 1200)
+```
+
+
+
+
+
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
